@@ -17,28 +17,59 @@ h1 { font-size: 17px; font-weight: 600; text-align: center; padding-bottom: 12px
 }
 .search-wrap input::placeholder { color: #8e8e93; }
 .search-icon { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: #8e8e93; font-size: 15px; }
-.count { font-size: 12px; color: #8e8e93; padding: 8px 16px 4px; }
+.count { font-size: 12px; color: #8e8e93; padding: 8px 16px 4px; display: flex; align-items: center; justify-content: space-between; }
+.reset-btn { font-size: 12px; color: #ff3b30; background: none; border: none; padding: 2px 8px; border-radius: 6px; cursor: pointer; }
+.reset-btn:active { background: #ffe5e5; }
 .list { padding: 0 16px 32px; }
 .card {
   background: #fff; border-radius: 12px; margin-bottom: 8px;
-  display: flex; align-items: center; gap: 12px; padding: 12px 14px;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.06); overflow: hidden;
 }
+.card-top {
+  display: flex; align-items: center; gap: 12px; padding: 12px 14px;
+  cursor: pointer; transition: opacity 0.2s;
+}
+.card.checked .card-top { opacity: 0.45; }
 .avatar {
   width: 44px; height: 44px; border-radius: 50%;
   background: #e1f0ff; display: flex; align-items: center; justify-content: center;
   font-size: 15px; font-weight: 600; color: #0a84ff; flex-shrink: 0;
+  transition: background 0.2s;
 }
+.card.checked .avatar { background: #e5e5ea; color: #8e8e93; }
 .info { flex: 1; min-width: 0; }
 .name { font-size: 16px; font-weight: 600; color: #1c1c1e; }
 .eng { font-size: 11px; color: #aeaeb2; font-weight: 400; margin-left: 4px; }
 .sub { font-size: 13px; color: #8e8e93; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.check-btn {
+  width: 30px; height: 30px; border-radius: 50%; border: 2px solid #d1d1d6;
+  background: none; cursor: pointer; display: flex; align-items: center; justify-content: center;
+  font-size: 16px; transition: all 0.15s; color: transparent;
+}
+.card.checked .check-btn { background: #34c759; border-color: #34c759; color: #fff; }
 .tel-btn {
   width: 44px; height: 44px; border-radius: 50%;
   background: #e8f8ee; display: flex; align-items: center; justify-content: center;
-  text-decoration: none; flex-shrink: 0; font-size: 20px;
+  text-decoration: none; font-size: 20px;
 }
 .tel-btn:active { background: #c8f0d8; transform: scale(0.95); }
+.memo-area {
+  display: none; border-top: 0.5px solid #e5e5ea; padding: 10px 14px;
+  background: #fafafa;
+}
+.memo-area.open { display: block; }
+.memo-area textarea {
+  width: 100%; min-height: 72px; border: none; background: transparent;
+  font-family: inherit; font-size: 14px; color: #1c1c1e; resize: none; outline: none;
+  line-height: 1.5;
+}
+.memo-area textarea::placeholder { color: #c7c7cc; }
+.memo-dot {
+  width: 7px; height: 7px; border-radius: 50%; background: #ff9500;
+  display: none; flex-shrink: 0; margin-left: 2px;
+}
+.has-memo .memo-dot { display: block; }
 </style>
 </head>
 <body>
@@ -49,7 +80,10 @@ h1 { font-size: 17px; font-weight: 600; text-align: center; padding-bottom: 12px
     <input type="search" id="q" placeholder="이름 또는 소속 검색" oninput="render()">
   </div>
 </header>
-<div class="count" id="cnt"></div>
+<div class="count">
+  <span id="cnt"></span>
+  <button class="reset-btn" onclick="resetAll()">출석 초기화</button>
+</div>
 <div class="list" id="list"></div>
 <script>
 const data = [
@@ -69,21 +103,68 @@ const data = [
   {n:"김수정",en:"KIM SUJUNG",org:"만제",tel:"01099575512"},
   {n:"나윤정",en:"NA YUNJUNG",org:"만제",tel:"01067800105"},
 ];
+
+let checked = JSON.parse(localStorage.getItem('attendance') || '{}');
+let memos = JSON.parse(localStorage.getItem('memos') || '{}');
+let open = {};
+
+function save(){ localStorage.setItem('attendance', JSON.stringify(checked)); }
+function saveMemo(tel, val){ memos[tel] = val; localStorage.setItem('memos', JSON.stringify(memos)); }
 function fmt(t){ return t.replace(/^(\d{3})(\d{4})(\d{4})$/,'$1-$2-$3'); }
 function init(n){ return n.slice(0,2); }
+
+function toggle(tel, e){
+  e.stopPropagation();
+  checked[tel] = !checked[tel];
+  save(); render();
+}
+
+function toggleMemo(tel){
+  open[tel] = !open[tel];
+  render();
+  if(open[tel]){
+    setTimeout(()=>{ const t = document.getElementById('memo_'+tel); if(t){ t.focus(); t.setSelectionRange(t.value.length,t.value.length); }},50);
+  }
+}
+
+function onMemoInput(tel){
+  const val = document.getElementById('memo_'+tel).value;
+  saveMemo(tel, val);
+  // update dot without full render
+  const card = document.getElementById('card_'+tel);
+  if(card) card.classList.toggle('has-memo', !!val.trim());
+}
+
+function resetAll(){
+  if(!confirm('출석을 초기화할까요?')) return;
+  checked = {}; save(); render();
+}
+
 function render(){
   const q = document.getElementById('q').value.trim();
   const f = q ? data.filter(d=>d.n.includes(q)||d.org.includes(q)||d.en.toLowerCase().includes(q.toLowerCase())) : data;
-  document.getElementById('cnt').textContent = `총 ${f.length}명`;
-  document.getElementById('list').innerHTML = f.map(d=>`
-    <div class="card">
-      <div class="avatar">${init(d.n)}</div>
-      <div class="info">
-        <div class="name">${d.n}<span class="eng">${d.en}</span></div>
-        <div class="sub">${d.org} · ${fmt(d.tel)}</div>
+  const checkedCount = data.filter(d=>checked[d.tel]).length;
+  document.getElementById('cnt').textContent = `총 ${f.length}명 · 출석 ${checkedCount}명`;
+  document.getElementById('list').innerHTML = f.map(d=>{
+    const hasMemo = !!(memos[d.tel] && memos[d.tel].trim());
+    return `
+    <div class="card ${checked[d.tel]?'checked':''} ${hasMemo?'has-memo':''}" id="card_${d.tel}">
+      <div class="card-top" onclick="toggleMemo('${d.tel}')">
+        <div class="avatar">${init(d.n)}</div>
+        <div class="info">
+          <div class="name">${d.n}<span class="eng">${d.en}</span><span class="memo-dot"></span></div>
+          <div class="sub">${d.org} · ${fmt(d.tel)}</div>
+        </div>
+        <div class="right">
+          <button class="check-btn" onclick="toggle('${d.tel}',event)" aria-label="출석체크">✓</button>
+          <a class="tel-btn" href="tel:${d.tel}" onclick="event.stopPropagation()" aria-label="${d.n} 전화">📞</a>
+        </div>
       </div>
-      <a class="tel-btn" href="tel:${d.tel}" aria-label="${d.n} 전화">📞</a>
-    </div>`).join('');
+      <div class="memo-area ${open[d.tel]?'open':''}">
+        <textarea id="memo_${d.tel}" placeholder="메모를 입력하세요..." oninput="onMemoInput('${d.tel}')">${memos[d.tel]||''}</textarea>
+      </div>
+    </div>`;
+  }).join('');
 }
 render();
 </script>
